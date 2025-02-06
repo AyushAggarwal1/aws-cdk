@@ -1,8 +1,8 @@
 name: Sync repository from upstream
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: 5 2 * * *
+  # schedule:
+  #   - cron: 5 2 * * *
 
 env:
   BRANCHES: main v2-release
