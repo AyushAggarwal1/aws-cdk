@@ -1,9 +1,9 @@
 name: Yarn Upgrade
 
 on:
-  schedule:
-    # Every wednesday at 13:37 UTC
-    - cron: 37 13 * * 3
+  # schedule:
+  #   # Every wednesday at 13:37 UTC
+  #   - cron: 37 13 * * 3
   workflow_dispatch: {}
 
 jobs:
