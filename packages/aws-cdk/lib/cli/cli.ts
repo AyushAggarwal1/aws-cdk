@@ -8,6 +8,7 @@ import { checkForPlatformWarnings } from './platform-warnings';
 import * as version from './version';
 import { SdkProvider } from '../api/aws-auth';
 import { SdkToCliLogger } from '../api/aws-auth/sdk-logger';
+import { setSdkTracing } from '../api/aws-auth/tracing';
 import { BootstrapSource, Bootstrapper } from '../api/bootstrap';
 import { StackSelector } from '../api/cxapp/cloud-assembly';
 import { CloudExecutable, Synthesizer } from '../api/cxapp/cloud-executable';
@@ -23,12 +24,11 @@ import { docs } from '../commands/docs';
 import { doctor } from '../commands/doctor';
 import { getMigrateScanType } from '../commands/migrate';
 import { cliInit, printAvailableTemplates } from '../init';
-import { data, debug, error, info } from '../logging';
+import { result, debug, error, info } from '../logging';
 import { Notices } from '../notices';
 import { Command, Configuration } from './user-configuration';
 import { IoMessageLevel, CliIoHost } from '../toolkit/cli-io-host';
 import { ToolkitError } from '../toolkit/error';
-import { enableTracing } from '../util/tracing';
 
 /* eslint-disable max-len */
 /* eslint-disable @typescript-eslint/no-shadow */ // yargs
@@ -66,7 +66,10 @@ export async function exec(args: string[], synthesizer?: Synthesizer): Promise<n
 
   // Debug should always imply tracing
   if (argv.debug || argv.verbose > 2) {
-    enableTracing(true);
+    setSdkTracing(true);
+  } else {
+    // cli-lib-alpha needs to explicitly set in case it was enabled before
+    setSdkTracing(false);
   }
 
   try {
@@ -75,7 +78,7 @@ export async function exec(args: string[], synthesizer?: Synthesizer): Promise<n
     debug(`Error while checking for platform warnings: ${e}`);
   }
 
-  debug('CDK toolkit version:', version.DISPLAY_VERSION);
+  debug('CDK toolkit version:', version.displayVersion());
   debug('Command line arguments:', argv);
 
   const configuration = new Configuration({
@@ -104,7 +107,7 @@ export async function exec(args: string[], synthesizer?: Synthesizer): Promise<n
       proxyAddress: argv.proxy,
       caBundlePath: argv['ca-bundle-path'],
     },
-    logger: new SdkToCliLogger(),
+    logger: new SdkToCliLogger(ioHost),
   });
 
   let outDirLock: ILock | undefined;
@@ -195,7 +198,9 @@ export async function exec(args: string[], synthesizer?: Synthesizer): Promise<n
     };
 
     const cli = new CdkToolkit({
+      ioHost,
       cloudExecutable,
+      toolkitStackName,
       deployments: cloudFormation,
       verbose: argv.trace || argv.verbose > 0,
       ignoreErrors: argv['ignore-errors'],
@@ -489,7 +494,7 @@ export async function exec(args: string[], synthesizer?: Synthesizer): Promise<n
         });
       case 'version':
         ioHost.currentAction = 'version';
-        return data(version.DISPLAY_VERSION);
+        return result(version.displayVersion());
 
       default:
         throw new ToolkitError('Unknown command: ' + command);
