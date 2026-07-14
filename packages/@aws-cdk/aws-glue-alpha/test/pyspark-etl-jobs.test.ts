@@ -1,9 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
-import * as glue from '../lib';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Template, Match } from 'aws-cdk-lib/assertions';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { LogGroup } from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as glue from '../lib';
 
 describe('Job', () => {
   let stack: cdk.Stack;
@@ -15,6 +15,10 @@ describe('Job', () => {
 
   beforeEach(() => {
     stack = new cdk.Stack();
+    cdk.Validations.of(stack).acknowledge({
+      id: 'CloudFormation-Validate::E1155',
+      reason: 'Syntactically incorrect log group name',
+    });
     role = iam.Role.fromRoleArn(stack, 'Role', 'arn:aws:iam::123456789012:role/TestRole');
     codeBucket = s3.Bucket.fromBucketName(stack, 'CodeBucket', 'bucketname');
     script = glue.Code.fromBucket(codeBucket, 'script');
@@ -661,6 +665,118 @@ describe('Job', () => {
           FirstTagName: 'FirstTagValue',
           SecondTagName: 'SecondTagValue',
           XTagName: 'XTagValue',
+        },
+      });
+    });
+  });
+
+  describe('Create new PySpark ETL Job with metrics control', () => {
+    test('Default behavior should include metrics (backward compatibility)', () => {
+      new glue.PySparkEtlJob(stack, 'PySparkETLJob', {
+        role,
+        script,
+        jobName: 'PySparkETLJob',
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::Glue::Job', {
+        DefaultArguments: Match.objectLike({
+          '--enable-metrics': '',
+          '--enable-observability-metrics': 'true',
+        }),
+      });
+    });
+
+    test('Should exclude metrics when enableMetrics is false', () => {
+      new glue.PySparkEtlJob(stack, 'PySparkETLJob', {
+        role,
+        script,
+        jobName: 'PySparkETLJob',
+        enableMetrics: false,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::Glue::Job', {
+        DefaultArguments: Match.objectLike({
+          '--enable-observability-metrics': 'true',
+        }),
+      });
+
+      // Verify that --enable-metrics is NOT present
+      const template = Template.fromStack(stack);
+      const jobs = template.findResources('AWS::Glue::Job');
+      const jobResource = Object.values(jobs)[0] as any;
+      expect(jobResource.Properties.DefaultArguments).not.toHaveProperty('--enable-metrics');
+    });
+
+    test('Should exclude observability metrics when enableObservabilityMetrics is false', () => {
+      new glue.PySparkEtlJob(stack, 'PySparkETLJob', {
+        role,
+        script,
+        jobName: 'PySparkETLJob',
+        enableObservabilityMetrics: false,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::Glue::Job', {
+        DefaultArguments: Match.objectLike({
+          '--enable-metrics': '',
+        }),
+      });
+
+      // Verify that --enable-observability-metrics is NOT present
+      const template = Template.fromStack(stack);
+      const jobs = template.findResources('AWS::Glue::Job');
+      const jobResource = Object.values(jobs)[0] as any;
+      expect(jobResource.Properties.DefaultArguments).not.toHaveProperty('--enable-observability-metrics');
+    });
+
+    test('Should exclude both metrics when both are disabled', () => {
+      new glue.PySparkEtlJob(stack, 'PySparkETLJob', {
+        role,
+        script,
+        jobName: 'PySparkETLJob',
+        enableMetrics: false,
+        enableObservabilityMetrics: false,
+      });
+
+      // Verify that neither metrics argument is present
+      const template = Template.fromStack(stack);
+      const jobs = template.findResources('AWS::Glue::Job');
+      const jobResource = Object.values(jobs)[0] as any;
+      expect(jobResource.Properties.DefaultArguments).not.toHaveProperty('--enable-metrics');
+      expect(jobResource.Properties.DefaultArguments).not.toHaveProperty('--enable-observability-metrics');
+    });
+
+    test('Should include metrics when explicitly enabled', () => {
+      new glue.PySparkEtlJob(stack, 'PySparkETLJob', {
+        role,
+        script,
+        jobName: 'PySparkETLJob',
+        enableMetrics: true,
+        enableObservabilityMetrics: true,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::Glue::Job', {
+        DefaultArguments: Match.objectLike({
+          '--enable-metrics': '',
+          '--enable-observability-metrics': 'true',
+        }),
+      });
+    });
+  });
+
+  describe('Create PySpark ETL Job with notifyDelayAfter', () => {
+    beforeEach(() => {
+      job = new glue.PySparkEtlJob(stack, 'PySparkETLJob', {
+        role,
+        script,
+        jobName: 'PySparkETLJob',
+        notifyDelayAfter: cdk.Duration.minutes(10),
+      });
+    });
+
+    test('NotificationProperty is set', () => {
+      Template.fromStack(stack).hasResourceProperties('AWS::Glue::Job', {
+        NotificationProperty: {
+          NotifyDelayAfter: 10,
         },
       });
     });
